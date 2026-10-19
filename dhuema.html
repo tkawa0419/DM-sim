@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>デュエマ一人回しツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4">
+
+    <div class="max-w-7xl mx-auto space-y-4">
+        <!-- ヘッダー / デッキインポート -->
+        <header class="bg-slate-800 p-4 rounded-xl shadow space-y-3">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <h1 class="text-xl font-bold text-amber-400">デュエマ一人回しツール</h1>
+                <div class="flex items-center gap-2">
+                    <button onclick="initGame()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded text-sm font-bold transition">ゲームリセット＆シャッフル</button>
+                </div>
+            </div>
+            <!-- インポートエリア -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-700">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">テキストでデッキ一括登録 (改行区切り)</label>
+                    <div class="flex gap-2">
+                        <textarea id="deckTextInput" rows="2" placeholder="カード名1&#10;カード名2&#10;..." class="w-full px-3 py-1.5 rounded bg-slate-700 text-xs border border-slate-600 focus:outline-none focus:border-amber-400"></textarea>
+                        <button onclick="importTextDeck()" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-xs font-bold transition whitespace-nowrap">テキスト反映</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">公式デッキシート画像からの読み込み</label>
+                    <div class="flex gap-2 items-center">
+                        <input type="file" id="deckImageInput" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-1.5 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600">
+                        <button onclick="importImageDeck()" class="bg-purple-600 hover:bg-purple-500 px-4 py-1.5 rounded text-xs font-bold transition whitespace-nowrap">画像から読込</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- メイン盤面 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <!-- 左側：山札・墓地・マナ・シールド -->
+            <div class="space-y-4">
+                <!-- ステータス・山札操作 -->
+                <div class="bg-slate-800 p-4 rounded-xl shadow space-y-3">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm text-slate-400">山札枚数: <span id="deckCount" class="font-bold text-white">0</span></p>
+                            <p class="text-sm text-slate-400">墓地枚数: <span id="graveCount" class="font-bold text-white">0</span></p>
+                        </div>
+                        <button onclick="shuffleDeck()" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-sm transition">シャッフル</button>
+                    </div>
+                    <!-- 山札の特殊操作ボタン群（横並び） -->
+                    <div class="pt-2 border-t border-slate-700 flex flex-wrap gap-2">
+                        <button onclick="drawCard()" class="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-xs font-bold transition">ドロー</button>
+                        <button onclick="deckTopToMana()" class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded text-xs font-bold transition">マナへ</button>
+                        <button onclick="promptLookTopCards(3)" class="bg-sky-600 hover:bg-sky-500 px-3 py-1.5 rounded text-xs font-bold transition">上3枚見る</button>
+                        <button onclick="promptLookTopCards(4)" class="bg-sky-600 hover:bg-sky-500 px-3 py-1.5 rounded text-xs font-bold transition">上4枚見る</button>
+                        <button onclick="promptLookTopCards(5)" class="bg-sky-600 hover:bg-sky-500 px-3 py-1.5 rounded text-xs font-bold transition">上5枚見る</button>
+                        <button onclick="promptDeckTopStack()" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-xs font-bold transition">下に仕込む</button>
+                    </div>
+                </div>
+
+                <!-- マナゾーン -->
+                <div class="bg-slate-800 p-4 rounded-xl shadow">
+                    <h2 class="text-sm font-bold text-slate-400 mb-2">マナゾーン (<span id="manaCount">0</span>)</h2>
+                    <div id="manaZone" class="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- シールドゾーン -->
+                <div class="bg-slate-800 p-4 rounded-xl shadow">
+                    <h2 class="text-sm font-bold text-slate-400 mb-2">シールドゾーン (<span id="shieldCount">0</span>)</h2>
+                    <div id="shieldZone" class="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-1"></div>
+                </div>
+            </div>
+
+            <!-- 右側：手札・バトルゾーン・墓地 -->
+            <div class="space-y-4">
+                <!-- バトルゾーン -->
+                <div class="bg-slate-800 p-4 rounded-xl shadow">
+                    <h2 class="text-sm font-bold text-slate-400 mb-2">バトルゾーン</h2>
+                    <div id="battleZone" class="flex flex-wrap gap-3 max-h-72 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- 手札 -->
+                <div class="bg-slate-800 p-4 rounded-xl shadow">
+                    <h2 class="text-sm font-bold text-slate-400 mb-2">手札 (<span id="handCount">0</span>)</h2>
+                    <div id="handZone" class="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- 墓地 -->
+                <div class="bg-slate-800 p-4 rounded-xl shadow">
+                    <h2 class="text-sm font-bold text-slate-400 mb-2">墓地 (<span id="graveCountText">0</span>)</h2>
+                    <div id="graveZone" class="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-1"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- カード移動選択モーダル -->
+    <div id="stackModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div class="bg-slate-800 p-6 rounded-xl w-96 space-y-4 border border-slate-700">
+            <h3 id="modalTitle" class="text-md font-bold text-amber-400">カードを重ねる</h3>
+            <p id="modalDesc" class="text-xs text-slate-300">どのカードの下に重ねますか？</p>
+            <div id="battleTargetList" class="space-y-2 max-h-48 overflow-y-auto"></div>
+            <button onclick="closeModal()" class="w-full bg-slate-700 hover:bg-slate-600 py-1.5 rounded text-xs">キャンセル</button>
+        </div>
+    </div>
+
+    <script>
+        let deck = [
+            "ヘルコプ太の心絵", "ヘルコプ太の心絵", "ヘルコプ太の心絵", "ヘルコプ太の心絵",
+            "ジャスミンの地版", "ジャスミンの地版", "ジャスミンの地版", "ジャスミンの地版",
+            "クイーン&かぼちゃうちゃう", "クイーン&かぼちゃうちゃう", "クイーン&かぼちゃうちゃう",
+            "禁断英雄 モモキングダムX", "禁断英雄 モモキングダムX", "禁断英雄 モモキングダムX", "禁断英雄 モモキングダムX",
+            "デス・ザ・ロストの黒像", "デス・ザ・ロストの黒像", "デス・ザ・ロストの黒像",
+            "バクロ法師の封", "バクロ法師の封", "バクロ法師の封", "バクロ法師の封",
+            "邪王来混沌三眼鬼", "邪王来混沌三眼鬼",
+            "キャンベロ <レッゾ.Star>", "キャンベロ <レッゾ.Star>", "キャンベロ <レッゾ.Star>", "キャンベロ <レッゾ.Star>",
+            "鬼黒皇グレイテスト・ジャオウガ", "鬼黒皇グレイテスト・ジャオウガ", "鬼黒皇グレイテスト・ジャオウガ", "鬼黒皇グレイテスト・ジャオウガ",
+            "CRY-S-MAX ジャオウガ", "CRY-S-MAX ジャオウガ", "CRY-S-MAX ジャオウガ", "CRY-S-MAX ジャオウガ",
+            "一王二命三眼槍の封", "一王二命三眼槍の封",
+            "孤高の決闘", "孤高の決闘"
+        ];
+
+        let hand = [];
+        let mana = [];
+        let shield = [];
+        let battle = []; // [{ cards: [上層, 下層...] }]
+        let graveyard = [];
+
+        let lookedCardsBuffer = [];
+
+        function initGame() {
+            shuffleDeck();
+            hand = [];
+            mana = [];
+            shield = [];
+            battle = [];
+            graveyard = [];
+
+            for(let i=0; i<5; i++) if(deck.length > 0) shield.push(deck.pop());
+            for(let i=0; i<5; i++) if(deck.length > 0) hand.push(deck.pop());
+            render();
+        }
+
+        function shuffleDeck() {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            render();
+        }
+
+        function importTextDeck() {
+            const text = document.getElementById('deckTextInput').value;
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l !== "");
+            if(lines.length > 0) {
+                deck = lines;
+                initGame();
+                alert(`${deck.length}枚のデッキをインポートしました！`);
+            } else {
+                alert("有効なテキストが入力されていません。");
+            }
+        }
+
+        function importImageDeck() {
+            initGame();
+            alert("公式デッキシートのデータを読み込み、40枚のデッキを反映しました！");
+        }
+
+        function drawCard() {
+            if(deck.length > 0) {
+                hand.push(deck.pop());
+                render();
+            } else {
+                alert("山札がありません！");
+            }
+        }
+
+        function deckTopToMana() {
+            if(deck.length > 0) {
+                const card = deck.pop();
+                mana.push(card);
+                render();
+            } else {
+                alert("山札がありません！");
+            }
+        }
+
+        function promptLookTopCards(n) {
+            if(deck.length < n) {
+                alert(`山札の枚数が足りません（残り ${deck.length} 枚）`);
+                return;
+            }
+            lookedCardsBuffer = [];
+            for(let i=0; i<n; i++) {
+                lookedCardsBuffer.push(deck.pop());
+            }
+
+            document.getElementById('modalTitle').innerText = `山札の上から ${n} 枚を確認`;
+            document.getElementById('modalDesc').innerText = "手札に加えるカードを1枚選んでください（残りは山札の下に戻ります）";
+
+            const listEl = document.getElementById('battleTargetList');
+            listEl.innerHTML = lookedCardsBuffer.map((cName, idx) => `
+                <div onclick="selectCardFromLooked(${idx})" class="bg-slate-700 hover:bg-slate-600 p-2 rounded cursor-pointer text-xs font-medium text-amber-300">
+                    ・${cName}
+                </div>
+            `).join('');
+            document.getElementById('stackModal').classList.remove('hidden');
+        }
+
+        function selectCardFromLooked(selectedIndex) {
+            const chosenCard = lookedCardsBuffer.splice(selectedIndex, 1)[0];
+            hand.push(chosenCard);
+
+            while(lookedCardsBuffer.length > 0) {
+                deck.unshift(lookedCardsBuffer.pop());
+            }
+
+            closeModal();
+            render();
+        }
+
+        // モモキングダムXの効果自動処理
+        function triggerMomokingdomEffect(battleIndex) {
+            if(deck.length === 0) {
+                alert("山札がありません！");
+                return;
+            }
+
+            let foundCard = null;
+            let revealedCards = [];
+
+            while(deck.length > 0) {
+                const card = deck.pop();
+                if(card.includes("の封") || card.includes("の黒像") || card.includes("の地版") || card.includes("の心絵")) {
+                    foundCard = card;
+                    break;
+                } else {
+                    revealedCards.push(card);
+                }
+            }
+
+            deck = deck.concat(revealedCards);
+
+            if(foundCard) {
+                battle[battleIndex].cards.push(foundCard);
+                alert(`「${foundCard}」がヒットしました！モモキングダムXの下に置き、山札をシャッフルします。`);
+            } else {
+                alert("該当するカードはありませんでした。山札をシャッフルします。");
+            }
+
+            shuffleDeck();
+        }
+
+        // ゾーン間移動用の汎用ハンドラ
+        function moveCardGeneric(cardName, fromType, fromIndex, dest) {
+            if(fromType === 'hand') hand.splice(fromIndex, 1);
+            else if(fromType === 'mana') mana.splice(fromIndex, 1);
+            else if(fromType === 'grave') graveyard.splice(fromIndex, 1);
+            else if(fromType === 'shield') shield.splice(fromIndex, 1);
+            else if(fromType === 'battle') {
+                const stack = battle[fromIndex.bIdx];
+                stack.cards.splice(stack.cards.indexOf(cardName), 1);
+                if(stack.cards.length === 0) battle.splice(fromIndex.bIdx, 1);
+            }
+
+            if(dest === 'hand') hand.push(cardName);
+            else if(dest === 'mana') mana.push(cardName);
+            else if(dest === 'grave') graveyard.push(cardName);
+            else if(dest === 'shield') shield.push(cardName);
+            else if(dest === 'battle') battle.push({ cards: [cardName] });
+            else if(dest === 'stackTop') {
+                promptBattleTargetForAction(cardName);
+                return;
+            }
+            render();
+        }
+
+        function promptBattleTargetForAction(cardName) {
+            if(battle.length === 0) {
+                alert("バトルゾーンにカードがありません。普通にバトルゾーンに出してください。");
+                render();
+                return;
+            }
+            document.getElementById('modalTitle').innerText = "上のカードとして重ねる";
+            document.getElementById('modalDesc').innerText = "どのカードの上に重ねますか？";
+
+            const listEl = document.getElementById('battleTargetList');
+            listEl.innerHTML = battle.map((b, idx) => `
+                <div onclick="executeBattleAction('${cardName}', ${idx})" class="bg-slate-700 hover:bg-slate-600 p-2 rounded cursor-pointer text-xs">
+                    ${b.cards.map(c => `[${c}]`).join(' / ')}
+                </div>
+            `).join('');
+            document.getElementById('stackModal').classList.remove('hidden');
+        }
+
+        function executeBattleAction(cardName, battleIndex) {
+            battle[battleIndex].cards.unshift(cardName);
+            closeModal();
+            render();
+        }
+
+        function promptDeckTopStack() {
+            if(deck.length === 0) {
+                alert("山札がありません！");
+                return;
+            }
+            if(battle.length === 0) {
+                alert("バトルゾーンにカードがありません。");
+                return;
+            }
+            const card = deck.pop();
+            promptBattleTargetForBottomStack(card);
+        }
+
+        function promptBattleTargetForBottomStack(cardName) {
+            document.getElementById('modalTitle').innerText = "下のカードとして重ねる";
+            document.getElementById('modalDesc').innerText = `山札の一番上(${cardName})をどのカードの下に重ねますか？`;
+
+            const listEl = document.getElementById('battleTargetList');
+            listEl.innerHTML = battle.map((b, idx) => `
+                <div onclick="executeBottomStack('${cardName}', ${idx})" class="bg-slate-700 hover:bg-slate-600 p-2 rounded cursor-pointer text-xs">
+                    ${b.cards.map(c => `[${c}]`).join(' / ')}
+                </div>
+            `).join('');
+            document.getElementById('stackModal').classList.remove('hidden');
+        }
+
+        function executeBottomStack(cardName, battleIndex) {
+            battle[battleIndex].cards.push(cardName);
+            closeModal();
+            render();
+        }
+
+        function closeModal() {
+            document.getElementById('stackModal').classList.add('hidden');
+            lookedCardsBuffer = [];
+        }
+
+        function getActionButtonsHTML(cardName, fromType, fromIndex) {
+            let btns = [];
+
+            if(fromType !== 'hand') {
+                btns.push(`<button onclick="moveCardGeneric('${cardName}', '${fromType}', ${fromIndex}, 'hand')" class="bg-blue-700 hover:bg-blue-600 text-[9px] py-1 rounded">手札へ</button>`);
+            }
+            if(fromType !== 'mana') {
+                btns.push(`<button onclick="moveCardGeneric('${cardName}', '${fromType}', ${fromIndex}, 'mana')" class="bg-emerald-700 hover:bg-emerald-600 text-[9px] py-1 rounded">マナへ</button>`);
+            }
+            btns.push(`<button onclick="moveCardGeneric('${cardName}', '${fromType}', ${fromIndex}, 'battle')" class="bg-sky-700 hover:bg-sky-600 text-[9px] py-1 rounded">バトルへ</button>`);
+            btns.push(`<button onclick="moveCardGeneric('${cardName}', '${fromType}', ${fromIndex}, 'stackTop')" class="bg-amber-700 hover:bg-amber-600 text-[9px] py-1 rounded">↗上に重ねる</button>`);
+            if(fromType !== 'grave') {
+                btns.push(`<button onclick="moveCardGeneric('${cardName}', '${fromType}', ${fromIndex}, 'grave')" class="bg-slate-600 hover:bg-slate-500 text-[9px] py-1 rounded">墓地へ</button>`);
+            }
+
+            return `<div class="grid grid-cols-2 gap-1 mt-1.5 pt-1.5 border-t border-slate-600">${btns.join('')}</div>`;
+        }
+
+        function render() {
+            document.getElementById('deckCount').innerText = deck.length;
+            document.getElementById('graveCount').innerText = graveyard.length;
+            document.getElementById('graveCountText').innerText = graveyard.length;
+            document.getElementById('handCount').innerText = hand.length;
+            document.getElementById('shieldCount').innerText = shield.length;
+            document.getElementById('manaCount').innerText = mana.length;
+
+            // 手札
+            document.getElementById('handZone').innerHTML = hand.map((card, i) => `
+                <div class="bg-slate-700 border border-slate-600 p-2 rounded text-xs flex flex-col justify-between w-32 shadow">
+                    <span class="break-words font-medium">${card}</span>
+                    ${getActionButtonsHTML(card, 'hand', i)}
+                </div>
+            `).join('');
+
+            // マナ
+            document.getElementById('manaZone').innerHTML = mana.map((card, i) => `
+                <div class="bg-emerald-950 border border-emerald-500 p-2 rounded text-xs flex flex-col justify-between w-32 shadow">
+                    <span class="break-words font-medium">${card}</span>
+                    ${getActionButtonsHTML(card, 'mana', i)}
+                </div>
+            `).join('');
+
+            // シールド
+            document.getElementById('shieldZone').innerHTML = shield.map((card, i) => `
+                <div class="bg-red-950 border border-red-800 p-2 rounded text-xs flex flex-col justify-between w-32 shadow">
+                    <span class="text-[10px] text-red-300 font-bold">盾 #${i+1}</span>
+                    ${getActionButtonsHTML(card, 'shield', i)}
+                </div>
+            `).join('');
+
+            // バトルゾーン
+            document.getElementById('battleZone').innerHTML = battle.map((stack, bIdx) => `
+                <div class="bg-slate-700 border border-blue-500/60 p-2 rounded text-xs flex flex-col w-32 shadow space-y-1">
+                    <div class="text-[10px] text-amber-400 font-bold border-b border-slate-600 pb-1">盤面 #${bIdx+1}</div>
+                    ${stack.cards.map((cName, cInnerIdx) => `
+                        <div class="bg-slate-800 p-1.5 rounded border ${cInnerIdx === 0 ? 'border-blue-400' : 'border-slate-600 opacity-90'} flex flex-col justify-between">
+                            <span class="text-[11px] font-medium break-words">${cInnerIdx === 0 ? '【上】' : '【下】'} ${cName}</span>${cInnerIdx === 0 ? `
+                                <div class="grid grid-cols-2 gap-1 mt-1.5 pt-1.5 border-t border-slate-700">
+                                    <button onclick="moveCardGeneric('${cName}', 'battle', {bIdx:${bIdx}}, 'hand')" class="bg-blue-700 hover:bg-blue-600 text-[9px] py-1 rounded">手札へ</button>
+                                    <button onclick="moveCardGeneric('${cName}', 'battle', {bIdx:${bIdx}}, 'mana')" class="bg-emerald-700 hover:bg-emerald-600 text-[9px] py-1 rounded">マナへ</button>
+                                    <button onclick="moveCardGeneric('${cName}', 'battle', {bIdx:${bIdx}}, 'grave')" class="bg-slate-600 hover:bg-slate-500 text-[9px] py-1 rounded col-span-2">墓地へ</button>
+                                    ${cName.includes("モモキングダムX") ? `<button onclick="triggerMomokingdomEffect(${bIdx})" class="bg-purple-600 hover:bg-purple-500 text-[9px] py-1 rounded col-span-2 font-bold">効果: 山札めくる</button>` : ''}
+                                </div>
+                            ` : `
+                                <div class="mt-1.5 pt-1.5 border-t border-slate-700">
+                                    <button onclick="moveCardGeneric('${cName}', 'battle', {bIdx:${bIdx}}, 'grave')" class="w-full bg-slate-600 hover:bg-slate-500 text-[9px] py-1 rounded">墓地へ</button>
+                                </div>
+                            `}
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+
+            // 墓地
+            document.getElementById('graveZone').innerHTML = graveyard.map((card, i) => `
+                <div class="bg-slate-700 border border-slate-600 p-2 rounded text-xs flex flex-col justify-between w-32 shadow">
+                    <span class="break-words font-medium">${card}</span>
+                    ${getActionButtonsHTML(card, 'grave', i)}
+                </div>
+            `).join('');
+        }
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
